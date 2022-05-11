@@ -175,6 +175,7 @@ type cloudHypervisor struct {
 	vmconfig       chclient.VmConfig
 	state          CloudHypervisorState
 	config         HypervisorConfig
+	netDevices     *[]chclient.NetConfig
 }
 
 var clhKernelParams = []Param{
@@ -1295,6 +1296,13 @@ func (clh *cloudHypervisor) bootVM(ctx context.Context) error {
 		return fmt.Errorf("VM state is not 'Created' after 'CreateVM'")
 	}
 
+	for _, netDevice := range *clh.netDevices {
+		_, _, err = cl.VmAddNetPut(ctx, netDevice)
+		if err != nil {
+			return err
+		}
+	}
+
 	clh.Logger().Debug("Booting VM")
 	_, err = cl.BootVM(ctx)
 	if err != nil {
@@ -1398,10 +1406,10 @@ func (clh *cloudHypervisor) addNet(e Endpoint) error {
 		net.SetRateLimiterConfig(*netRateLimiterConfig)
 	}
 
-	if clh.vmconfig.Net != nil {
-		*clh.vmconfig.Net = append(*clh.vmconfig.Net, *net)
+	if clh.netDevices != nil {
+		*clh.netDevices = append(*clh.netDevices, *net)
 	} else {
-		clh.vmconfig.Net = &[]chclient.NetConfig{*net}
+		clh.netDevices = &[]chclient.NetConfig{*net}
 	}
 
 	return nil
