@@ -9,11 +9,13 @@
 package virtcontainers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,8 +102,6 @@ type clhClient interface {
 	VmAddDiskPut(ctx context.Context, diskConfig chclient.DiskConfig) (chclient.PciDeviceInfo, *http.Response, error)
 	// Remove a device from the VM
 	VmRemoveDevicePut(ctx context.Context, vmRemoveDevice chclient.VmRemoveDevice) (*http.Response, error)
-	// Add a new net device to the VM
-	VmAddNetPut(ctx context.Context, netConfig chclient.NetConfig) (chclient.PciDeviceInfo, *http.Response, error)
 }
 
 type clhClientApi struct {
@@ -143,10 +143,6 @@ func (c *clhClientApi) VmAddDiskPut(ctx context.Context, diskConfig chclient.Dis
 
 func (c *clhClientApi) VmRemoveDevicePut(ctx context.Context, vmRemoveDevice chclient.VmRemoveDevice) (*http.Response, error) {
 	return c.ApiInternal.VmRemoveDevicePut(ctx).VmRemoveDevice(vmRemoveDevice).Execute()
-}
-
-func (c *clhClientApi) VmAddNetPut(ctx context.Context, netConfig chclient.NetConfig) (chclient.PciDeviceInfo, *http.Response, error) {
-	return c.ApiInternal.VmAddNetPut(ctx).NetConfig(netConfig).Execute()
 }
 
 //
@@ -1296,10 +1292,43 @@ func (clh *cloudHypervisor) bootVM(ctx context.Context) error {
 		return fmt.Errorf("VM state is not 'Created' after 'CreateVM'")
 	}
 
-	for _, netDevice := range *clh.netDevices {
-		_, _, err = cl.VmAddNetPut(ctx, netDevice)
+	{
+		addr, err := net.ResolveUnixAddr("unix", clh.state.apiSocket)
 		if err != nil {
 			return err
+		}
+
+		conn, err := net.DialUnix("unix", nil, addr)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		for _, netDevice := range *clh.netDevices {
+			netDeviceAsJson, err := json.Marshal(netDevice)
+			if err != nil {
+				return err
+			}
+			netDeviceAsIoReader := bytes.NewBuffer(netDeviceAsJson)
+
+			req, err := http.NewRequest(http.MethodPut, "http://localhost/api/v1/vm.add-net", netDeviceAsIoReader)
+			if err != nil {
+				return err
+			}
+
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Content-Length", strconv.Itoa(int(netDeviceAsIoReader.Len())))
+
+			payload, err := httputil.DumpRequest(req, true)
+			if err != nil {
+				return err
+			}
+
+			_, err = conn.Write([]byte(payload))
+			if err != nil {
+				return err
+			}
 		}
 	}
 
