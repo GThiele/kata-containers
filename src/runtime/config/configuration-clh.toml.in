@@ -11,9 +11,9 @@
 # XXX:   Type: @PROJECT_TYPE@
 
 [hypervisor.clh]
-path = "@CLHPATH@"
-kernel = "@KERNELPATH_CLH@"
-image = "@IMAGEPATH@"
+path = "/opt/kata/bin/cloud-hypervisor"
+kernel = "/kata/vmlinux-5.15.23-90"
+image = "/kata/kata-containers.img"
 
 # List of valid annotation names for the hypervisor
 # Each member of the list is a regular expression, which is the base name
